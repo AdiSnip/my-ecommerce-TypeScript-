@@ -4,7 +4,7 @@ import { IUser } from '../types/userSchema.type';
 const userSchema = new Schema<IUser>({
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
-    password: { type: String },
+    password: { type: String, required: true },
     contactNumber: { type: String },
     address: {
         street: { type: String },
@@ -26,9 +26,9 @@ const userSchema = new Schema<IUser>({
         cancel: [{ type: Schema.Types.ObjectId, ref: 'Product' }],
     },
     cart: [{
-        product: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
+        product: { type: Schema.Types.ObjectId, ref: 'Product'},
         quantity: { type: Number, default: 1 }
     }]
 }, { timestamps: true });
 
-export const User = model<IUser>('User', userSchema);
+export default model<IUser>('User', userSchema);
