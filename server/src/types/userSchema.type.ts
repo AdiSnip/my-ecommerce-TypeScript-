@@ -20,6 +20,7 @@ export interface IUser extends Document {
     contactNumber?: string;
     address?: IAddress;
     profilePicture?: string;
+    refreshToken?: string;
     role: 'user' | 'admin';
     isVerified: boolean;
 
@@ -38,4 +39,9 @@ export interface IUser extends Document {
 
     createdAt: Date;
     updatedAt: Date;
+
+    // Method signatures for instance methods
+    comparePassword(password: string): Promise<boolean>;
+    generateAccessToken(): string;
+    generateRefreshToken(): string;
 }

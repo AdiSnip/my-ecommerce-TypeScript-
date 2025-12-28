@@ -1,27 +1,37 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 
-const app = express()
+//routes imports
+import userAuthRoute from "./routes/userAuth.route"; 
 
+const app = express();
+
+// 1. Improved CORS configuration
 app.use(cors({
-    origin: process.env.CORS_ORIGIN,
-    credentials: true
-}))
+    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+}));
 
-app.use(express.json({limit: "16kb"}))
-app.use(express.urlencoded({extended: true, limit: "16kb"}))
-app.use(express.static("public"))
-app.use(cookieParser())
+// 2. Parsers with limits
+app.use(express.json({ limit: "16kb" }));
+app.use(express.urlencoded({ extended: true, limit: "16kb" }));
+app.use(express.static("public")); // Useful for Multer temp files
+app.use(cookieParser());
 
-//import routes
-import userAuthRoute from "./routes/userAuth.route"
-//Routes
-app.use("/api/auth",userAuthRoute)
+// 3. Health Check Route (Good for Load Balancers/Docker)
+app.get("/health", (_req, res) => {
+    res.status(200).json({ status: "ok", uptime: process.uptime() });
+});
 
-app.get("/", (req, res) => {
-    res.send("Hello World!")
-})
+// 4. Routes
+app.use("/api/v1/auth", userAuthRoute); // Added versioning (v1)
 
+// 5. Root Route
+app.get("/", (req: Request, res: Response) => {
+    res.send("API is running...");
+});
 
-export default app
+export default app;
