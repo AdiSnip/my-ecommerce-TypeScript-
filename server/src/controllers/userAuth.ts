@@ -1,9 +1,9 @@
 import { Request, Response } from 'express';
-import User from '../models/userSchema.model';
+import User from '../models/user.model';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
-import { IUser } from '../types/userSchema.type';
+import { IUser } from '../types/user.type';
 import { uploadOnCloudinary } from '../utils/uploadCloudinary';
 import { generateAccessAndRefreshTokens } from '../utils/generateToken';
 import { Resend } from 'resend'; //not used 0

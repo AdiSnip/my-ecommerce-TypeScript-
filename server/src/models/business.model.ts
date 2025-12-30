@@ -37,4 +37,8 @@ const businessSchema = new Schema<IBusiness>({
   isVerified: { type: Boolean, default: false }
 }, { timestamps: true });
 
+businessSchema.methods.getConversionRate = function() {
+    return (this.analytics.totalOrders / (this.analytics.totalVisitors || 1)) * 100;
+};
+
 export const Business = model<IBusiness>('Business', businessSchema);

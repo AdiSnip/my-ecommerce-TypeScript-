@@ -1,4 +1,4 @@
-import User from '../models/userSchema.model';
+import User from '../models/user.model';
 
 
 /**
