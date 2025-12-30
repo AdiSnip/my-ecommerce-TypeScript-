@@ -6,8 +6,9 @@ import bcrypt from 'bcryptjs';
 import { IUser } from '../types/userSchema.type';
 import { uploadOnCloudinary } from '../utils/uploadCloudinary';
 import { generateAccessAndRefreshTokens } from '../utils/generateToken';
-import { Resend } from 'resend';
+import { Resend } from 'resend'; //not used 0
 import nodemailer from 'nodemailer';
+import { DeleteCloudinaryImage } from '../utils/deleteCloudinaryImage';
 
 dotenv.config();
 
@@ -227,30 +228,37 @@ export const fetchUser = async (req: any, res: Response) => {
  */
 export const updateProfile = async (req: any, res: Response) => {
     try {
-        let { name, contactNumber, address } = req.body;
+        let { name, contactNumber, street, city, state, zipCode, country } = req.body;
 
-        if (!name && !contactNumber && !address && !req.file) {
+        if (!name && !contactNumber && !street && !city && !state && !zipCode && !country && !req.file) {
             return res.status(400).json({ message: "No valid fields provided for update" });
         }
 
-        if (!address && req.body['address[city]']) {
-            address = {
-                city: req.body['address[city]']
-            };
-        }
         // 1. Prepare an empty object for filtered updates
         // This prevents users from updating fields like 'role' or 'email' via this route
         const updateData: any = {};
 
         if (name) updateData.name = name;
         if (contactNumber) updateData.contactNumber = contactNumber;
-        if (address) updateData.address = address;
 
-        // 2. Handle Profile Picture Upload
+        // Use dot notation for nested address fields to prevent overwriting the entire object
+        if (street) updateData["address.street"] = street;
+        if (city) updateData["address.city"] = city;
+        if (state) updateData["address.state"] = state;
+        if (zipCode) updateData["address.zipCode"] = zipCode;
+        if (country) updateData["address.country"] = country;
+
+        // 2. Handle Profile Picture Upload and old image deletion
         if (req.file) {
             const cloudResponse = await uploadOnCloudinary(req.file.path);
             if (cloudResponse) {
                 updateData.profilePicture = cloudResponse.secure_url;
+                if (req.user.profilePicture) {
+                    const oldPublicId = DeleteCloudinaryImage.extractPublicId(req.user.profilePicture);
+                    if (oldPublicId) {
+                        await DeleteCloudinaryImage.deleteImage(oldPublicId);
+                    }
+                }
             }
         }
 
@@ -413,4 +421,3 @@ export const logout = async (req: any, res: Response) => {
         return res.status(500).json({ message: "Internal Server Error" });
     }
 };
-//bhai update ke time delete cloudinary ke image bhi delete ho jana chahiye

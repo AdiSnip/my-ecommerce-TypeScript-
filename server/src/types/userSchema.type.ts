@@ -8,10 +8,6 @@ export interface IAddress {
     country?: string;
 }
 
-export interface ICartItem {
-    product: Types.ObjectId;
-    quantity: number;
-}
 
 export interface IUser extends Document {
     name: string;
@@ -23,15 +19,6 @@ export interface IUser extends Document {
     refreshToken?: string;
     role: 'user' | 'admin';
     isVerified: boolean;
-
-    history: {
-        buy: Types.ObjectId[];
-        return: Types.ObjectId[];
-        cancel: Types.ObjectId[];
-    };
-
-    cart: ICartItem[];
-
     interaction: {
         category: Types.ObjectId[];
         subcategory: Types.ObjectId[];

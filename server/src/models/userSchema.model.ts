@@ -27,16 +27,7 @@ const userSchema = new Schema<IUser>({
     interaction: {
         category: [{ type: Schema.Types.ObjectId, ref: 'Category' }],
         subcategory: [{ type: Schema.Types.ObjectId, ref: 'SubCategory' }],
-    },
-    history: {
-        buy: [{ type: Schema.Types.ObjectId, ref: 'Product' }],
-        return: [{ type: Schema.Types.ObjectId, ref: 'Product' }],
-        cancel: [{ type: Schema.Types.ObjectId, ref: 'Product' }],
-    },
-    cart: [{
-        product: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
-        quantity: { type: Number, default: 0, min: 0 }
-    }]
+    }
 }, { timestamps: true }); // Automatically adds createdAt and updatedAt fields
 
 /**
