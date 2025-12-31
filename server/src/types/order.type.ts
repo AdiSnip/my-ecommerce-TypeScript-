@@ -2,6 +2,7 @@ import { Document, Types } from 'mongoose';
 import { IAddress } from './user.type';
 
 export interface IOrderItem {
+    seller: Types.ObjectId;
     product: Types.ObjectId;
     quantity: number;
     priceAtPurchase: number; // Snapshot of price

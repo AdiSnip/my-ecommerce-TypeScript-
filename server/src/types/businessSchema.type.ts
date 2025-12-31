@@ -24,6 +24,7 @@ export interface IBusiness extends Document {
   };
   status: 'active' | 'suspended' | 'under_review';
   isVerified: boolean;
+  isDeleted: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

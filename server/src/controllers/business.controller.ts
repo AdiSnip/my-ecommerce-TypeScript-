@@ -2,7 +2,8 @@ import { Business } from "../models/business.model";
 import User from "../models/user.model";
 import { Response } from "express";
 import { Product } from "../models/product.model";
-import {Order} from "../models/order.model";
+import { Order } from "../models/order.model";
+import { Review } from "../models/review.model";
 import mongoose from "mongoose";
 
 /**
@@ -72,14 +73,14 @@ export const updateBusiness = async (req: any, res: Response) => {
     try {
         // 1. Find the business first
         const business = await Business.findOne({ owner: req.user._id });
-        if (!business) {
+        if (!business || business.isDeleted) {
             return res.status(404).json({ message: "Business not found." });
         }
 
-        const { 
-            businessName, legalEntityName, taxId, 
-            street, city, state, zipCode, country, 
-            accountHolderName, accountNumber, routingNumber, bankName 
+        const {
+            businessName, legalEntityName, taxId,
+            street, city, state, zipCode, country,
+            accountHolderName, accountNumber, routingNumber, bankName
         } = req.body;
 
         // 2. Tax ID Conflict Check (Only if taxId is provided and different)
@@ -146,62 +147,191 @@ export const updateBusiness = async (req: any, res: Response) => {
 export const getBusiness = async (req: any, res: Response) => {
     try {
         const business = await Business.findOne({ owner: req.user._id })
-            .populate("owner", "name email profilePicture") 
+            .populate("owner", "name email profilePicture")
             .lean();
 
-        if (!business) {
-            return res.status(404).json({ 
-                success: false, 
-                message: "No business account found for this user." 
+        if (!business || business.isDeleted) {
+            return res.status(404).json({
+                success: false,
+                message: "No business account found for this user."
             });
         }
 
-        return res.status(200).json({ 
-            success: true, 
-            data: business 
+        return res.status(200).json({
+            success: true,
+            data: business
         });
 
     } catch (error: any) {
         console.error("Get Business Error:", error);
-        return res.status(500).json({ 
+        return res.status(500).json({
             success: false,
-            message: "Internal Server Error", 
-            error: error.message 
+            message: "Internal Server Error",
+            error: error.message
         });
     }
 };
 
 /**
- * @route   PATCH /api/v1/business/status/:id
- * @desc    Admin: Activate or Suspend a business
- * @access  Private (Admin Only)
+ * @route   DELETE /api/v1/business/delete
+ * @desc    Seller: Delete business account
+ * @access  Private (Seller Only)
  */
-export const toggleBusinessStatus = async (req: any, res: Response) => {
-    try {
-        const { status } = req.body; // 'active', 'suspended', 'under_review'
-        const { id } = req.params;
+export const deleteBusiness = async (req: any, res: Response) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
-        if (!['active', 'suspended', 'under_review'].includes(status)) {
-            return res.status(400).json({ success: false, message: "Invalid status type." });
+    try {
+        // 1. Find the business
+        const business = await Business.findOne({ owner: req.user._id }).session(session);
+        if (!business || business.isDeleted) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({
+                success: false,
+                message: "No business account found for this user or already deleted."
+            });
         }
 
-        const business = await Business.findByIdAndUpdate(
-            id,
-            { status },
-            { new: true }
+        const businessId = business._id;
+
+        // 2. Check for PENDING/ACTIVE orders 
+        // We cannot delete a business if there are orders people paid for that aren't finished
+        const pendingOrders = await Order.findOne({
+            "items.seller": businessId,
+            orderStatus: { $in: ['processing', 'shipped'] }
+        }).session(session);
+
+        if (pendingOrders) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({
+                success: false,
+                message: "Cannot delete business with active orders. Please fulfill or cancel them first."
+            });
+        }
+
+        // 3. Perform Soft-Deletion & Cleanup
+        // Update Business status
+        await Business.findByIdAndUpdate(businessId, { isDeleted: true }, { session });
+
+        // Unpublish/Soft-delete Products (Don't hard-delete so old orders still have references)
+        await Product.updateMany(
+            { seller: businessId },
+            { $set: { isPublished: false, isDeleted: true } },
+            { session }
         );
 
-        if (!business) {
+        // Demote User back to 'user' role
+        await User.findByIdAndUpdate(req.user._id, { role: 'user' }, { session });
+
+        // NOTE: We DO NOT delete Orders or Reviews. 
+        // They remain in the DB for historical and legal purposes.
+
+        await session.commitTransaction();
+        session.endSession();
+
+        return res.status(200).json({
+            success: true,
+            message: "Business deleted successfully. Products have been unpublished."
+        });
+
+    } catch (error: any) {
+        await session.abortTransaction();
+        session.endSession();
+        console.error("Delete Business Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error",
+            error: error.message
+        });
+    }
+};
+
+/**
+ * @route   GET /api/v1/business/dashboard-stats
+ * @desc    Seller: Comprehensive dashboard data (Revenue, Products, Inventory, Customers)
+ * @access  Private (Seller Only)
+ */
+export const getBusinessDashboardStats = async (req: any, res: Response) => {
+    try {
+        const business = await Business.findOne({ owner: req.user._id }).select("_id");
+        if (!business || business.isDeleted) {
             return res.status(404).json({ success: false, message: "Business not found." });
         }
 
-        return res.status(200).json({ 
-            success: true, 
-            message: `Business status updated to ${status}`, 
-            data: business 
+        const businessId = new mongoose.Types.ObjectId(business._id.toString());
+
+        // Run all complex calculations in parallel for maximum speed
+        const [salesStats, topProducts, stockAlerts, topCustomers] = await Promise.all([
+
+            // 1. REVENUE & ORDER STATUS BREAKDOWN
+            Order.aggregate([
+                { $unwind: "$items" },
+                { $match: { "items.seller": businessId } },
+                {
+                    $group: {
+                        _id: null,
+                        totalRevenue: { $sum: { $cond: [{ $eq: ["$paymentStatus", "paid"] }, "$items.price", 0] } },
+                        orderCount: { $addToSet: "$_id" },
+                        pendingOrders: { $sum: { $cond: [{ $eq: ["$orderStatus", "pending"] }, 1, 0] } },
+                        deliveredOrders: { $sum: { $cond: [{ $eq: ["$orderStatus", "delivered"] }, 1, 0] } }
+                    }
+                },
+                { $project: { _id: 0, totalRevenue: 1, totalOrders: { $size: "$orderCount" }, pendingOrders: 1, deliveredOrders: 1 } }
+            ]),
+
+            // 2. TOP 5 BEST SELLING PRODUCTS
+            Order.aggregate([
+                { $unwind: "$items" },
+                { $match: { "items.seller": businessId } },
+                { $group: { _id: "$items.product", totalSold: { $sum: 1 }, revenue: { $sum: "$items.price" } } },
+                { $sort: { totalSold: -1 } },
+                { $limit: 5 },
+                { $lookup: { from: "products", localField: "_id", foreignField: "_id", as: "details" } },
+                { $unwind: "$details" },
+                { $project: { name: "$details.name", image: { $arrayElemAt: ["$details.images", 0] }, totalSold: 1, revenue: 1 } }
+            ]),
+
+            // 3. INVENTORY STOCK ALERTS (Low stock < 10)
+            Product.find({ seller: businessId, stock: { $lt: 10 } })
+                .select("name stock price")
+                .limit(5)
+                .lean(),
+
+            // 4. TOP CUSTOMERS (Loyalty)
+            Order.aggregate([
+                { $unwind: "$items" },
+                { $match: { "items.seller": businessId, paymentStatus: 'paid' } },
+                {
+                    $group: {
+                        _id: "$user",
+                        totalSpent: { $sum: "$items.price" },
+                        orderCount: { $addToSet: "$_id" },
+                        lastPurchase: { $max: "$createdAt" }
+                    }
+                },
+                { $sort: { totalSpent: -1 } },
+                { $limit: 5 },
+                { $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "user" } },
+                { $unwind: "$user" },
+                { $project: { name: "$user.name", email: "$user.email", totalSpent: 1, orderCount: { $size: "$orderCount" }, lastPurchase: 1 } }
+            ])
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                summary: salesStats[0] || { totalRevenue: 0, totalOrders: 0, pendingOrders: 0, deliveredOrders: 0 },
+                topProducts,
+                stockAlerts,
+                topCustomers
+            }
         });
+
     } catch (error: any) {
-        return res.status(500).json({ success: false, message: error.message });
+        console.error("Dashboard Error:", error);
+        return res.status(500).json({ success: false, message: "Failed to load dashboard data." });
     }
 };
 
@@ -219,11 +349,11 @@ export const getPublicBusinessProfile = async (req: any, res: Response) => {
 
         // 1. Parallel Execution: Fetch Business and Products simultaneously for speed
         const [business, products, totalProducts] = await Promise.all([
-            Business.findOne({ _id: id, status: 'active' })
+            Business.findOne({ _id: id, status: 'active', isDeleted: false })
                 .select("-bankDetails -taxId -analytics -updatedAt -__v")
                 .populate("owner", "name profilePicture")
                 .lean(),
-            
+
             Product.find({ seller: id, isPublished: true })
                 .select("name price images averageRating stock")
                 .sort("-createdAt")
@@ -235,10 +365,10 @@ export const getPublicBusinessProfile = async (req: any, res: Response) => {
         ]);
 
         // 2. Validation
-        if (!business) {
-            return res.status(404).json({ 
-                success: false, 
-                message: "Business not found or is currently inactive." 
+        if (!business || business.isDeleted) {
+            return res.status(404).json({
+                success: false,
+                message: "Business not found or is currently inactive."
             });
         }
 
@@ -262,89 +392,40 @@ export const getPublicBusinessProfile = async (req: any, res: Response) => {
     }
 };
 
-
 /**
- * @route   GET /api/v1/business/dashboard-stats
- * @desc    Seller: Comprehensive dashboard data (Revenue, Products, Inventory, Customers)
- * @access  Private (Seller Only)
+ * @route   PATCH /api/v1/business/status/:id
+ * @desc    Admin: Activate or Suspend a business account
+ * @access  Private (Admin Only)
  */
-export const getBusinessDashboardStats = async (req: any, res: Response) => {
+export const toggleBusinessStatus = async (req: any, res: Response) => {
     try {
-        const business = await Business.findOne({ owner: req.user._id }).select("_id");
-        if (!business) {
+        const { status } = req.body; // 'active', 'suspended', 'under_review'
+        const { id } = req.params;
+
+        if (!['active', 'suspended', 'under_review'].includes(status)) {
+            return res.status(400).json({ success: false, message: "Invalid status type." });
+        }
+
+        const business = await Business.findByIdAndUpdate(
+            id,
+            { status },
+            { new: true }
+        );
+
+        if (!business || business.isDeleted) {
             return res.status(404).json({ success: false, message: "Business not found." });
         }
 
-        const businessId = new mongoose.Types.ObjectId(business._id.toString());
-
-        // Run all complex calculations in parallel for maximum speed
-        const [salesStats, topProducts, stockAlerts, topCustomers] = await Promise.all([
-            
-            // 1. REVENUE & ORDER STATUS BREAKDOWN
-            Order.aggregate([
-                { $unwind: "$items" },
-                { $match: { "items.seller": businessId } },
-                { $group: {
-                    _id: null,
-                    totalRevenue: { $sum: { $cond: [{ $eq: ["$paymentStatus", "paid"] }, "$items.price", 0] } },
-                    orderCount: { $addToSet: "$_id" },
-                    pendingOrders: { $sum: { $cond: [{ $eq: ["$orderStatus", "pending"] }, 1, 0] } },
-                    deliveredOrders: { $sum: { $cond: [{ $eq: ["$orderStatus", "delivered"] }, 1, 0] } }
-                }},
-                { $project: { _id: 0, totalRevenue: 1, totalOrders: { $size: "$orderCount" }, pendingOrders: 1, deliveredOrders: 1 }}
-            ]),
-
-            // 2. TOP 5 BEST SELLING PRODUCTS
-            Order.aggregate([
-                { $unwind: "$items" },
-                { $match: { "items.seller": businessId } },
-                { $group: { _id: "$items.product", totalSold: { $sum: 1 }, revenue: { $sum: "$items.price" } }},
-                { $sort: { totalSold: -1 } },
-                { $limit: 5 },
-                { $lookup: { from: "products", localField: "_id", foreignField: "_id", as: "details" }},
-                { $unwind: "$details" },
-                { $project: { name: "$details.name", image: { $arrayElemAt: ["$details.images", 0] }, totalSold: 1, revenue: 1 }}
-            ]),
-
-            // 3. INVENTORY STOCK ALERTS (Low stock < 10)
-            Product.find({ seller: businessId, stock: { $lt: 10 } })
-                .select("name stock price")
-                .limit(5)
-                .lean(),
-
-            // 4. TOP CUSTOMERS (Loyalty)
-            Order.aggregate([
-                { $unwind: "$items" },
-                { $match: { "items.seller": businessId, paymentStatus: 'paid' } },
-                { $group: {
-                    _id: "$user",
-                    totalSpent: { $sum: "$items.price" },
-                    orderCount: { $addToSet: "$_id" },
-                    lastPurchase: { $max: "$createdAt" }
-                }},
-                { $sort: { totalSpent: -1 } },
-                { $limit: 5 },
-                { $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "user" }},
-                { $unwind: "$user" },
-                { $project: { name: "$user.name", email: "$user.email", totalSpent: 1, orderCount: { $size: "$orderCount" }, lastPurchase: 1 }}
-            ])
-        ]);
-
         return res.status(200).json({
             success: true,
-            data: {
-                summary: salesStats[0] || { totalRevenue: 0, totalOrders: 0, pendingOrders: 0, deliveredOrders: 0 },
-                topProducts,
-                stockAlerts,
-                topCustomers
-            }
+            message: `Business status updated to ${status}`,
+            data: business
         });
-
     } catch (error: any) {
-        console.error("Dashboard Error:", error);
-        return res.status(500).json({ success: false, message: "Failed to load dashboard data." });
+        return res.status(500).json({ success: false, message: error.message });
     }
 };
+
 
 
 //bhai aur do function hai bana lo fir business me softdeletion ke liye field bana lena

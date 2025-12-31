@@ -4,6 +4,7 @@ import { IOrder } from '../types/order.type';
 const orderSchema = new Schema<IOrder>({
     buyer: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     items: [{
+        seller: { type: Schema.Types.ObjectId, ref: 'Business', required: true },
         product: { type: Schema.Types.ObjectId, ref: 'Product' },
         quantity: { type: Number, required: true },
         priceAtPurchase: { type: Number, required: true } // Price lock

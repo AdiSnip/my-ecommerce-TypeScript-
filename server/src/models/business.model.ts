@@ -26,8 +26,9 @@ const businessSchema = new Schema<IBusiness>({
     type: String, 
     enum: ['active', 'suspended', 'under_review'], 
     default: 'under_review' 
-  },
-  isVerified: { type: Boolean, default: false }
+  },//updated by admin
+  isVerified: { type: Boolean, default: false },//updated by admin
+  isDeleted: { type: Boolean, default: false }
 }, { timestamps: true });
 
 businessSchema.methods.getConversionRate = function() {

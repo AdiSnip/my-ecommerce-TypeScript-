@@ -10,6 +10,7 @@ export interface IProduct extends Document {
     images: string[];
     stock: number;
     isPublished: boolean;
+    isDeleted: boolean;
     averageRating: number;
     totalReviews: number;
     attributes: Array<{ key: string; value: string }>; // e.g., Color, Size
