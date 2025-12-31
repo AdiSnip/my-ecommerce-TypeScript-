@@ -11,6 +11,7 @@ export interface IProduct extends Document {
     stock: number;
     isPublished: boolean;
     averageRating: number;
+    totalReviews: number;
     attributes: Array<{ key: string; value: string }>; // e.g., Color, Size
     createdAt: Date;
     updatedAt: Date;

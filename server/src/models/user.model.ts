@@ -22,11 +22,10 @@ const userSchema = new Schema<IUser>({
     },
     profilePicture: { type: String },
     refreshToken: { type: String }, // Stored for session persistence and token rotation
-    role: { type: String, enum: ['user', 'admin'], default: 'user' },
+    role: { type: String, enum: ['user', 'seller', 'admin'], default: 'user' },
     isVerified: { type: Boolean, default: false },
     interaction: {
-        category: [{ type: Schema.Types.ObjectId, ref: 'Category' }],
-        subcategory: [{ type: Schema.Types.ObjectId, ref: 'SubCategory' }],
+        category: [{ type: Schema.Types.ObjectId, ref: 'Category' }]
     }
 }, { timestamps: true }); // Automatically adds createdAt and updatedAt fields
 

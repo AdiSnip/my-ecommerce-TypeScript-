@@ -6,7 +6,7 @@ import {
     updateProfile, 
     sendEmailVerification,
     logout 
-} from '../controllers/userAuth';
+} from '../controllers/user.controller';
 import { upload } from '../middlewares/multer.middleware';
 import { verifyJWT } from '../middlewares/auth.middleware';
 

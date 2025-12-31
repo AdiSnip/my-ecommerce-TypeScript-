@@ -10,7 +10,8 @@ const productSchema = new Schema<IProduct>({
     images: [{ type: String }], // Cloudinary URLs
     stock: { type: Number, default: 0 },
     isPublished: { type: Boolean, default: false },
-    averageRating: { type: Number, default: 0 }
+    averageRating: { type: Number, default: 0 },
+    totalReviews: { type: Number, default: 0 }
 }, { timestamps: true });
 
 // Check if item is in stock

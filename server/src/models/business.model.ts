@@ -22,13 +22,6 @@ const businessSchema = new Schema<IBusiness>({
     bankName: String
   },
 
-  analytics: {
-    totalSales: { type: Number, default: 0 },
-    totalOrders: { type: Number, default: 0 },
-    totalVisitors: { type: Number, default: 0 },
-    marketingSpend: { type: Number, default: 0 }
-  },
-
   status: { 
     type: String, 
     enum: ['active', 'suspended', 'under_review'], 

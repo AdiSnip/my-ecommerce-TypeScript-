@@ -22,12 +22,6 @@ export interface IBusiness extends Document {
     routingNumber: string;
     bankName: string;
   };
-  analytics: {
-    totalSales: number;
-    totalOrders: number;
-    totalVisitors: number; // Needed for Conversion Rate
-    marketingSpend: number; // Needed for CAC
-  };
   status: 'active' | 'suspended' | 'under_review';
   isVerified: boolean;
   createdAt: Date;

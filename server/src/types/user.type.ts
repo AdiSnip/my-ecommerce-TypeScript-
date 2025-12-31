@@ -17,11 +17,10 @@ export interface IUser extends Document {
     address?: IAddress;
     profilePicture?: string;
     refreshToken?: string;
-    role: 'user' | 'admin';
+    role: 'user' | 'seller' | 'admin';
     isVerified: boolean;
     interaction: {
-        category: Types.ObjectId[];
-        subcategory: Types.ObjectId[];
+        category: Types.ObjectId[]
     };
 
     createdAt: Date;

@@ -3,7 +3,8 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 
 //routes imports
-import userAuthRoute from "./routes/userAuth.route"; 
+import userAuthRoute from "./routes/user.route"; 
+import businessRoute from "./routes/business.route";
 
 const app = express();
 
@@ -28,6 +29,7 @@ app.get("/health", (_req, res) => {
 
 // 4. Routes
 app.use("/api/v1/auth", userAuthRoute); // Added versioning (v1)
+app.use("/api/v1/business", businessRoute); // Added versioning (v1)
 
 // 5. Root Route
 app.get("/", (req: Request, res: Response) => {
