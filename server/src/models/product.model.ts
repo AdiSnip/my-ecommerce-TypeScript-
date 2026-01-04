@@ -6,6 +6,8 @@ const productSchema = new Schema<IProduct>({
     name: { type: String, required: true, trim: true },
     description: { type: String, required: true },
     price: { type: Number, required: true },
+    discount: { type: Number, default: 0 },
+    tax: { type: Number, default: 0 },
     category: { type: Schema.Types.ObjectId, ref: 'Category', required: true },
     images: [{ type: String }], // Cloudinary URLs
     stock: { type: Number, default: 0 },

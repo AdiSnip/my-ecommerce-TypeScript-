@@ -5,6 +5,8 @@ export interface IProduct extends Document {
     name: string;
     description: string;
     price: number;
+    discount: number;
+    tax: number;
     category: Types.ObjectId; // Refers to Category
     subcategory?: Types.ObjectId;
     images: string[];

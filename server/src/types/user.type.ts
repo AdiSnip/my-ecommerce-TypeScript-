@@ -19,9 +19,12 @@ export interface IUser extends Document {
     refreshToken?: string;
     role: 'user' | 'seller' | 'admin';
     isVerified: boolean;
-    interaction: {
-        category: Types.ObjectId[]
-    };
+    interaction: [
+        {
+            category: Types.ObjectId,
+            viewCount: number
+        }
+    ] //end point needed
 
     createdAt: Date;
     updatedAt: Date;

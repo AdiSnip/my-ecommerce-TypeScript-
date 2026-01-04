@@ -16,7 +16,6 @@ export interface IOrder extends Document {
     paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
     orderStatus: 'processing' | 'shipped' | 'delivered' | 'cancelled';
     paymentMethod: string;
-    trackingId?: string;
     createdAt: Date;
     updatedAt: Date;
 }

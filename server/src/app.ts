@@ -3,8 +3,9 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 
 //routes imports
-import userAuthRoute from "./routes/user.route"; 
+import AuthRoute from "./routes/auth.route"; 
 import businessRoute from "./routes/business.route";
+import userRoute from "./routes/user.route";
 
 const app = express();
 
@@ -28,8 +29,9 @@ app.get("/health", (_req, res) => {
 });
 
 // 4. Routes
-app.use("/api/v1/auth", userAuthRoute); // Added versioning (v1)
-app.use("/api/v1/business", businessRoute); // Added versioning (v1)
+app.use("/api/v1/auth", AuthRoute); 
+app.use("/api/v1/user", userRoute); 
+app.use("/api/v1/business", businessRoute); 
 
 // 5. Root Route
 app.get("/", (req: Request, res: Response) => {

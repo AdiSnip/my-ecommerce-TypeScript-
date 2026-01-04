@@ -1,5 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
-import { IBusiness } from '../types/businessSchema.type';
+import { IBusiness } from '../types/business.type';
 
 const businessSchema = new Schema<IBusiness>({
   owner: { type: Schema.Types.ObjectId, ref: 'User', required: true },
@@ -8,6 +8,14 @@ const businessSchema = new Schema<IBusiness>({
   taxId: { type: String, required: true, unique: true },
   
   businessAddress: {
+    street: String,
+    city: String,
+    state: String,
+    zipCode: String,
+    country: String
+  },
+
+  shippingAddress: {
     street: String,
     city: String,
     state: String,

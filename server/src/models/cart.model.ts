@@ -17,6 +17,7 @@ const cartSchema = new Schema<ICart>({
     billDetails: {
         itemsTotal: { type: Number, default: 0 },
         tax: { type: Number, default: 0 },
+        discount: { type: Number, default: 0 },
         shippingFee: { type: Number, default: 0 },
         grandTotal: { type: Number, default: 0 }
     }

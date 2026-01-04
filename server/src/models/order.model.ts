@@ -13,7 +13,6 @@ const orderSchema = new Schema<IOrder>({
     shippingAddress: { street: String, city: String, country: String },
     paymentStatus: { type: String, enum: ['pending', 'paid', 'failed'], default: 'pending' },
     orderStatus: { type: String, enum: ['processing', 'shipped', 'delivered', 'cancelled'], default: 'processing' },
-    trackingId: String
 }, { timestamps: true });
 
 export const Order = model('Order', orderSchema);
