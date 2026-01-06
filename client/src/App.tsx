@@ -4,7 +4,6 @@ import BannerCarousel from './components/shared/BannerCarousel'
 import ProductCard from './components/cards/ProductCard'
 import ProductPage from './pages/ProductPage'
 
-
 const App = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">

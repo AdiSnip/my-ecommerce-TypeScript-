@@ -300,3 +300,5 @@ export const sendEmailVerification = async (req: Request, res: Response) => {
         return res.status(500).json({ message: "Internal Server Error" });
     }
 }
+
+//bhai email verification ko otp system bana aur contact number verification ko otp system bana
