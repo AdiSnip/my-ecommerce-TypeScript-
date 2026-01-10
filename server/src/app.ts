@@ -3,9 +3,11 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 
 //routes imports
-import AuthRoute from "./routes/auth.route"; 
+import AuthRoute from "./routes/auth.route";
 import businessRoute from "./routes/business.route";
 import userRoute from "./routes/user.route";
+
+import { errorHandler } from './middlewares/error.middleware';
 
 const app = express();
 
@@ -29,13 +31,16 @@ app.get("/health", (_req, res) => {
 });
 
 // 4. Routes
-app.use("/api/v1/auth", AuthRoute); 
-app.use("/api/v1/user", userRoute); 
-app.use("/api/v1/business", businessRoute); 
+app.use("/api/v1/auth", AuthRoute);
+app.use("/api/v1/user", userRoute);
+app.use("/api/v1/business", businessRoute);
 
 // 5. Root Route
 app.get("/", (req: Request, res: Response) => {
     res.send("API is running...");
 });
+
+// Global Error Handler
+app.use(errorHandler);
 
 export default app;

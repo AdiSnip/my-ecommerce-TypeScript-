@@ -1,304 +1,255 @@
 import { Request, Response } from 'express';
 import User from '../models/user.model';
-import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 import { uploadOnCloudinary } from '../utils/uploadCloudinary';
 import { generateAccessAndRefreshTokens } from '../utils/generateToken';
-import nodemailer from 'nodemailer';
+import Otp from '../models/otp.model';
+import { asyncHandler } from '../utils/asyncHandler';
+import { ApiError } from '../utils/ApiError';
+import { ApiResponse } from '../utils/ApiResponse';
+import { sendEmail } from '../utils/mailService';
 
-dotenv.config();
-
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: 'iampro9236@gmail.com',
-        pass: process.env.NODEMAILER_APP_PASSWORD as string
-    }
-});
+// Cookie options
+const cookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict" as const,
+    path: '/'
+};
 
 /**
  * @route   POST /api/v1/auth/register
- * @desc    Register a new user, upload avatar to Cloudinary, and issue cookies
+ * @desc    Register a new user
  * @access  Public
  */
-export const registration = async (req: Request, res: Response) => {
-    try {
-        const { email, name, password } = req.body;
+export const registration = asyncHandler(async (req: Request, res: Response) => {
+    const { email, name, password } = req.body;
 
-        // 1. Validate required text fields
-        if (![email, name, password].every((field) => field?.trim())) {
-            return res.status(400).json({ message: "Name, email, and password are required" });
-        }
-
-        if (password.length < 6) {
-            return res.status(400).json({ message: "Password must be at least 6 characters" });
-        }
-
-        // 2. Prevent duplicate account creation
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            return res.status(400).json({ message: "An account with this email already exists" });
-        }
-
-        /**
-         * 3. Handle Optional Profile Picture
-         * If Multer finds a file, we upload it to Cloudinary.
-         * If not, we simply proceed with a null or default value.
-         */
-        let profilePictureUrl = ""; // Default empty or your preferred default avatar link
-
-        if (req.file) {
-            const uploadResult = await uploadOnCloudinary(req.file.path);
-            if (uploadResult) {
-                profilePictureUrl = uploadResult.secure_url;
-            } else {
-                // If the file exists but upload fails, alert the user
-                return res.status(500).json({ message: "Failed to process profile picture" });
-            }
-        }
-
-        // 4. Database Persistence
-        // Pre-save hooks in UserSchema should handle password hashing
-        const newUser = await User.create({
-            email: email as string,
-            name: name as string,
-            password: password as string,
-            profilePicture: profilePictureUrl || undefined
-        });
-
-        // 5. Authentication Token Generation
-        const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(newUser._id.toString());
-
-        // 6. Clean Response Data
-        const userResponse = newUser.toObject();
-        delete userResponse.password;
-        delete userResponse.refreshToken;
-
-        // Secure cookie settings for JWT storage
-        const cookieOptions = {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "strict" as const,
-        };
-
-        return res
-            .status(201)
-            .cookie("accessToken", accessToken, { ...cookieOptions, maxAge: 24 * 60 * 60 * 1000 }) // 1 Day
-            .cookie("refreshToken", refreshToken, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 * 1000 }) // 30 Days
-            .json({
-                message: "User registered successfully",
-                user: userResponse
-            });
-
-    } catch (error) {
-        console.error("Registration Logic Failure:", error);
-        return res.status(500).json({ message: "Internal Server Error" });
+    if (!email || !name || !password) {
+        throw new ApiError(400, "Name, email, and password are required");
     }
-};
+
+    if (password.length < 6) {
+        throw new ApiError(400, "Password must be at least 6 characters");
+    }
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+        throw new ApiError(400, "An account with this email already exists");
+    }
+
+    let profilePictureUrl = "";
+    if (req.file) {
+        const uploadResult = await uploadOnCloudinary(req.file.path);
+        if (uploadResult) {
+            profilePictureUrl = uploadResult.secure_url;
+        } else {
+            throw new ApiError(500, "Failed to process profile picture");
+        }
+    }
+
+    const newUser = await User.create({
+        email,
+        name,
+        password,
+        profilePicture: profilePictureUrl || undefined
+    });
+
+    const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(newUser._id.toString());
+
+    const userResponse = newUser.toObject();
+    delete userResponse.password;
+    delete userResponse.refreshToken;
+
+    return res
+        .status(201)
+        .cookie("accessToken", accessToken, { ...cookieOptions, maxAge: 24 * 60 * 60 * 1000 })
+        .cookie("refreshToken", refreshToken, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 * 1000 })
+        .json(new ApiResponse(201, { user: userResponse }, "User registered successfully"));
+});
 
 /**
  * @route   POST /api/v1/auth/login
- * @desc    Authenticate user, generate tokens, and set secure cookies
+ * @desc    Authenticate user
  * @access  Public
  */
-export const login = async (req: Request, res: Response) => {
-    try {
-        // 1. Destructure and validate input
-        if (!req.body) {
-            return res.status(400).json({
-                message: "Request body is missing. Please ensure you are sending data and 'Content-Type' is set correctly (e.g., application/json)."
-            });
-        }
-        const { email, password } = req.body;
+export const login = asyncHandler(async (req: Request, res: Response) => {
+    const { email, password } = req.body;
 
-        if (!email || !password) {
-            return res.status(400).json({
-                message: "Email and password are required"
-            });
-        }
-
-        // 2. Find user by email
-        // We do not check password here yet; we only verify if the user exists
-        const user = await User.findOne({ email });
-
-        if (!user) {
-            // Note: Use generic "Invalid credentials" to prevent email enumeration attacks
-            return res.status(401).json({ message: "Invalid credentials" });
-        }
-
-        // 3. Verify password using the instance method defined in UserSchema
-        const isPasswordValid = await user.comparePassword(password);
-
-        if (!isPasswordValid) {
-            return res.status(401).json({ message: "Invalid credentials" });
-        }
-
-        // 4. Generate Tokens (this also saves the new refresh token to the database)
-        const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id.toString());
-
-        // 5. Prepare User data for response
-        // Convert Mongoose Document to plain JS object to delete sensitive fields
-        const loggedInUser = user.toObject();
-        delete loggedInUser.password;
-        delete loggedInUser.refreshToken;
-
-        // 6. Define Security-focused Cookie Options
-        const cookieOptions = {
-            httpOnly: true, // Mitigates XSS: Cookie cannot be accessed via document.cookie
-            secure: process.env.NODE_ENV === "production", // Mitigates Sniffing: Only sent over HTTPS
-            sameSite: "strict" as const, // Mitigates CSRF: Browser won't send cookie on cross-site requests
-        };
-
-        // 7. Send Response
-        return res
-            .status(200)
-            .cookie("accessToken", accessToken, {
-                ...cookieOptions,
-                maxAge: 24 * 60 * 60 * 1000 // 1 Day
-            })
-            .cookie("refreshToken", refreshToken, {
-                ...cookieOptions,
-                maxAge: 30 * 24 * 60 * 60 * 1000 // 30 Days
-            })
-            .json({
-                message: "User logged in successfully",
-                user: loggedInUser,
-                accessToken // Optionally send access token in JSON if frontend needs it for headers
-            });
-
-    } catch (error) {
-        // Detailed logging for server-side debugging
-        console.error("Login Error:", error);
-        return res.status(500).json({ message: "Internal Server Error" });
+    if (!email || !password) {
+        throw new ApiError(400, "Email and password are required");
     }
-};
+
+    const user = await User.findOne({ email });
+    if (!user) {
+        throw new ApiError(401, "Invalid credentials");
+    }
+
+    const isPasswordValid = await user.comparePassword(password);
+    if (!isPasswordValid) {
+        throw new ApiError(401, "Invalid credentials");
+    }
+
+    const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id.toString());
+
+    const loggedInUser = user.toObject();
+    delete loggedInUser.password;
+    delete loggedInUser.refreshToken;
+
+    return res
+        .status(200)
+        .cookie("accessToken", accessToken, { ...cookieOptions, maxAge: 24 * 60 * 60 * 1000 })
+        .cookie("refreshToken", refreshToken, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 * 1000 })
+        .json(new ApiResponse(200, { user: loggedInUser, accessToken }, "User logged in successfully"));
+});
 
 /**
- * @route   GET /api/v1/auth/logout
+ * @route   POST /api/v1/auth/logout
  * @desc    Logout the user
  * @access  Private
  */
-export const logout = async (req: any, res: Response) => {
-    try {
-        // Retrieve tokens from signed or unsigned cookies
-        const { refreshToken } = req.cookies;
+export const logout = asyncHandler(async (req: any, res: Response) => {
+    const { refreshToken } = req.cookies;
 
-        // If no refresh token exists, session is already dead.
-        // Return 204 (No Content) as the operation is successfully idempotent.
-        if (!refreshToken) {
-            return res.status(204).json({ message: "Already logged out" });
-        }
-
-        /**
-         * SECURITY: Invalidate the token in the database.
-         * Using updateOne is an 'atomic operation' which is significantly faster 
-         * than .save() because it bypasses Mongoose middleware and validation.
-         */
-        await User.updateOne(
-            { _id: req.user._id },
-            { $set: { refreshToken: "" } }
-        );
-
-        /**
-         * Browser Cookie Settings
-         * Must match the configuration used when the cookies were originally set.
-         */
-        const cookieOptions = {
-            httpOnly: true, // Prevents XSS attacks by hiding cookie from JS
-            secure: process.env.NODE_ENV === 'production', // Only send over HTTPS in prod
-            sameSite: 'strict' as const, // Protection against CSRF
-            path: '/'
-        };
-
-        // Remove tokens from the client browser
-        res.clearCookie('accessToken', cookieOptions);
-        res.clearCookie('refreshToken', cookieOptions);
-
-        return res.status(200).json({ message: "Logout successful" });
-
-    } catch (error) {
-        // Log the full error server-side for debugging, keep client response generic
-        console.error("Logout System Failure:", error);
-        return res.status(500).json({ message: "Internal Server Error" });
+    if (!refreshToken) {
+        return res.status(204).json(new ApiResponse(204, {}, "Already logged out"));
     }
-};
+
+    await User.updateOne(
+        { _id: req.user._id },
+        { $set: { refreshToken: "" } }
+    );
+
+    res.clearCookie('accessToken', cookieOptions);
+    res.clearCookie('refreshToken', cookieOptions);
+
+    return res.status(200).json(new ApiResponse(200, {}, "Logout successful"));
+});
 
 /**
- * @route   POST /api/v1/auth/sendEmailVerification
- * @desc    Send email verification link to the user
+ * @route   POST /api/v1/auth/send-otp
+ * @desc    Send OTP for email verification
  * @access  Public
  */
-export const sendEmailVerification = async (req: Request, res: Response) => {
-    //resend code needs verification of domain so use it later
-    // try {
-    //     const resend = new Resend(process.env.RESEND_API_KEY);
-    //     const { email } = req.body;
+export const sendEmailVerification = asyncHandler(async (req: Request, res: Response) => {
+    const { email } = req.body;
 
-    //     const user = await User.findOne({ email });
+    if (!email) throw new ApiError(400, "Email is required");
 
-    //     if (!user) {
-    //         return res.status(404).json({ message: "User not found" });
-    //     }
+    const user = await User.findOne({ email });
+    if (!user) throw new ApiError(404, "User not found");
 
-    //     const Token = jwt.sign({ id: user._id }, process.env.EMAIL_TOKEN_SECRET as string, { expiresIn: 10*60*1000 });
+    const existingOtp = await Otp.findOne({ email });
+    const now = new Date();
 
-    //     const newPasswordPageUrl = `http://localhost:3000/verify-email/${Token}`;
-
-    //     const { data, error } = await resend.emails.send({
-    //         from: 'MyEcommerce <MyEcommerce@resend.dev>',
-    //         to: [email],
-    //         subject: 'Reset your password',
-    //         html: `
-    //             <h1>Password Reset</h1>
-    //             <p>Click the link below to reset your password. This link expires in 1 hour.</p>
-    //             <a href="${newPasswordPageUrl}">Reset Password</a>
-    //         `,
-    //     });
-    //     if (error) {
-    //         return res.status(400).json({ error });
-    //     }
-    //     return res.status(200).json({ message: "Email sent successfully" });
-    // } catch (error) {
-    //     console.error("Send Email Error:", error);
-    //     return res.status(500).json({ message: "Internal Server Error" });
-    // }
-    //using nodemailer as alternative
-
-
-    try {
-        const { email } = req.body;
-
-        const user = await User.findOne({ email });
-
-        if (!user) {
-            return res.status(404).json({ message: "User not found" });
+    if (existingOtp) {
+        const timeDiff = (now.getTime() - existingOtp.lastSentAt.getTime()) / 1000;
+        if (timeDiff < 60) {
+            throw new ApiError(429, `Please wait ${Math.ceil(60 - timeDiff)} seconds before requesting again.`);
         }
 
-        const Token = jwt.sign({ id: user._id }, process.env.EMAIL_TOKEN_SECRET as string, { expiresIn: '10m' });
-
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-        const newPasswordPageUrl = `${frontendUrl}/verify-email/${Token}`;
-
-        const mailOptions = {
-            from: '"Support Team" <iampro9236@gmail.com>',
-            to: email,
-            subject: 'Reset your password',
-            html: `
-                <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-                    <h1>Password Reset</h1>
-                    <p>You requested a password reset. Click the button below to continue. <b>This link expires in 10 minutes.</b></p>
-                    <a href="${newPasswordPageUrl}" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a>
-                    <p>If the button doesn't work, copy and paste this link: ${newPasswordPageUrl}</p>
-                </div>
-            `,
-        };
-
-        await transporter.sendMail(mailOptions);
-        return res.status(200).json({ message: "Email sent successfully" });
-    } catch (error) {
-        console.error("Send Email Error:", error);
-        return res.status(500).json({ message: "Internal Server Error" });
+        if (existingOtp.count >= 5) {
+            throw new ApiError(429, "Too many requests. Please try again in 5 minutes.");
+        }
     }
-}
 
-//bhai email verification ko otp system bana aur contact number verification ko otp system bana
+    const generatedOtp = Math.floor(100000 + Math.random() * 900000);
+
+    await Otp.findOneAndUpdate(
+        { email },
+        {
+            otp: generatedOtp,
+            lastSentAt: now,
+            $inc: { count: 1 },
+            createdAt: now
+        },
+        { upsert: true, new: true }
+    );
+
+    const emailHtml = `
+        <div style="max-width: 500px; margin: auto; border: 1px solid #eee; padding: 20px; font-family: sans-serif;">
+            <h2 style="color: #333; text-align: center;">Verification Code</h2>
+            <p>Use the following code to complete your request. This code is valid for <b>5 minutes</b>.</p>
+            <div style="background: #f4f4f4; padding: 10px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px;">
+                ${generatedOtp}
+            </div>
+            <p style="color: #666; font-size: 12px; margin-top: 20px;">
+                If you did not request this code, please ignore this email or secure your account.
+            </p>
+        </div>
+    `;
+
+    await sendEmail(email, 'Your Verification Code', emailHtml);
+
+    return res.status(200).json(new ApiResponse(200, {}, "OTP sent successfully. Check your inbox."));
+});
+
+/**
+ * @route   POST /api/v1/auth/verify-otp
+ * @desc    Verify OTP and return password reset token
+ * @access  Public
+ */
+export const verifyOtp = asyncHandler(async (req: Request, res: Response) => {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+        throw new ApiError(400, "Email and OTP are required");
+    }
+
+    const otpRecord = await Otp.findOne({ email });
+
+    if (!otpRecord) {
+        throw new ApiError(404, "OTP expired or not found. Please request a new one.");
+    }
+
+    if (otpRecord.otp !== Number(otp)) {
+        throw new ApiError(400, "Invalid verification code.");
+    }
+
+    const resetToken = jwt.sign(
+        { email: email },
+        process.env.RESET_TOKEN_SECRET as string,
+        { expiresIn: '15m' }
+    );
+
+    await Otp.deleteOne({ _id: otpRecord._id });
+
+    return res.status(200).json(new ApiResponse(200, { resetToken }, "OTP verified successfully."));
+});
+
+/**
+ * @route   POST /api/v1/auth/reset-password
+ * @desc    Reset password using reset token
+ * @access  Public
+ */
+export const resetPassword = asyncHandler(async (req: Request, res: Response) => {
+    const { newPassword, confirmPassword } = req.body;
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        throw new ApiError(401, "Unauthorized. Reset token missing.");
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    let decoded: any;
+    try {
+        decoded = jwt.verify(token, process.env.RESET_TOKEN_SECRET as string);
+    } catch (err) {
+        console.error("Reset Token Verification Error:", err);
+        throw new ApiError(401, "Reset token expired or invalid.");
+    }
+
+    if (newPassword !== confirmPassword) {
+        throw new ApiError(400, "Passwords do not match");
+    }
+
+    const user = await User.findOne({ email: decoded.email });
+    if (!user) throw new ApiError(404, "User no longer exists");
+
+    user.password = newPassword;
+    user.refreshToken = undefined;
+    await user.save();
+
+    return res.status(200).json(new ApiResponse(200, {}, "Password updated successfully. Please login."));
+});

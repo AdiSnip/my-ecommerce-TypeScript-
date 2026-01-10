@@ -3,6 +3,8 @@ import Navbar from './components/ui/Navbar'
 import BannerCarousel from './components/shared/BannerCarousel'
 import ProductCard from './components/cards/ProductCard'
 import ProductPage from './pages/ProductPage'
+import Signup from "./pages/auth/signup";
+import Login from "./pages/auth/login";
 
 const App = () => {
   return (
@@ -11,6 +13,8 @@ const App = () => {
       <Navbar />
 
       <Routes>
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/login" element={<Login />} />
         <Route path="/" element={
           <>
             <main className="relative mt-[10vh]">

@@ -24,12 +24,18 @@ const userSchema = new Schema<IUser>({
     refreshToken: { type: String }, // Stored for session persistence and token rotation
     role: { type: String, enum: ['user', 'seller', 'admin'], default: 'user' },
     isVerified: { type: Boolean, default: false },
-    interaction: [
-        {
-            category: { type: Schema.Types.ObjectId, ref: 'Category' },
-            viewCount: { type: Number, default: 0 },
-        }
-    ]
+    interaction: {
+        type: [
+            {
+                category: { type: Schema.Types.ObjectId, ref: 'Category' },
+                viewCount: { type: Number, default: 0 },
+            }
+        ],
+        validate: [
+            (val: any[]) => val.length <= 5,
+            '{PATH} exceeds the limit of 5'
+        ]
+    }
 }, { timestamps: true }); // Automatically adds createdAt and updatedAt fields
 
 /**
