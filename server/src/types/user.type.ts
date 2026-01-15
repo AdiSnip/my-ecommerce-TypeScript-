@@ -6,8 +6,10 @@ export interface IAddress {
     state?: string;
     zipCode?: string;
     country?: string;
+    phone?: string;
 }
 
+// --- 1. User Interface ---
 
 export interface IUser extends Document {
     name: string;
@@ -19,17 +21,12 @@ export interface IUser extends Document {
     refreshToken?: string;
     role: 'user' | 'seller' | 'admin';
     isVerified: boolean;
-    interaction: [
-        {
-            category: Types.ObjectId,
-            viewCount: number
-        }
-    ] //end point needed
-
+    interaction: {
+        category: Types.ObjectId;
+        viewCount: number;
+    }[];
     createdAt: Date;
     updatedAt: Date;
-
-    // Method signatures for instance methods
     comparePassword(password: string): Promise<boolean>;
     generateAccessToken(): string;
     generateRefreshToken(): string;

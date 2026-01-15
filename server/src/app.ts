@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import AuthRoute from "./routes/auth.route";
 import businessRoute from "./routes/business.route";
 import userRoute from "./routes/user.route";
+import productRoute from './routes/product.route'
 
 import { errorHandler } from './middlewares/error.middleware';
 
@@ -34,6 +35,7 @@ app.get("/health", (_req, res) => {
 app.use("/api/v1/auth", AuthRoute);
 app.use("/api/v1/user", userRoute);
 app.use("/api/v1/business", businessRoute);
+app.use("/api/v1/product", productRoute)
 
 // 5. Root Route
 app.get("/", (req: Request, res: Response) => {

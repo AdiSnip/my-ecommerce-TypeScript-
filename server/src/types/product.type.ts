@@ -1,21 +1,23 @@
 import { Document, Types } from 'mongoose';
+import { IBusiness } from './business.type';
 
 export interface IProduct extends Document {
-    seller: Types.ObjectId; // Refers to Business
+    seller: Types.ObjectId | IBusiness;
     name: string;
+    slug: string;
     description: string;
-    price: number;
-    discount: number;
-    tax: number;
-    category: Types.ObjectId; // Refers to Category
-    subcategory?: Types.ObjectId;
+    category: Types.ObjectId;
+    brand?: string;
+    tags: string[];
     images: string[];
-    stock: number;
-    isPublished: boolean;
-    isDeleted: boolean;
+    specifications: { key: string; value: string }[];
+    hasVariants: boolean;
+    minPrice: number;
+    maxPrice: number;
     averageRating: number;
     totalReviews: number;
-    attributes: Array<{ key: string; value: string }>; // e.g., Color, Size
+    isPublished: boolean;
+    isDeleted: boolean;
     createdAt: Date;
     updatedAt: Date;
 }
