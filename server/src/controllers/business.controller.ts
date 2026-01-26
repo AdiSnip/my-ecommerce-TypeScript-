@@ -287,7 +287,7 @@ export const getPublicBusinessProfile = asyncHandler(async (req: Request, res: R
 });
 
 /**
- * @route   PATCH /api/v1/business/status/:id
+ * @route   PATCH /api/v1/admin/business/status/:id
  * @desc    Admin: Activate or Suspend a business account
  * @access  Private (Admin Only)
  */

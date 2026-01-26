@@ -1,4 +1,5 @@
 import { Response, NextFunction } from "express";
+import { ApiError } from "../utils/ApiError";
 
 /**
  * Middleware to restrict access to Admin users only.
@@ -11,8 +12,5 @@ export const verifyAdmin = (req: any, res: Response, next: NextFunction) => {
     }
 
     // 2. Deny access if role is 'user', 'seller', or undefined
-    return res.status(403).json({
-        success: false,
-        message: "Forbidden: Access restricted to administrators only."
-    });
+    throw new ApiError(403,"Forbidden: Access restricted to administrators only.")
 };

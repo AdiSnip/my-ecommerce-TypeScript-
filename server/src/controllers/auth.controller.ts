@@ -213,6 +213,7 @@ export const verifyOtp = asyncHandler(async (req: Request, res: Response) => {
     );
 
     await Otp.deleteOne({ _id: otpRecord._id });
+    await User.updateOne({ email }, { $set: { isVerified: true } });
 
     return res.status(200).json(new ApiResponse(200, { resetToken }, "OTP verified successfully."));
 });

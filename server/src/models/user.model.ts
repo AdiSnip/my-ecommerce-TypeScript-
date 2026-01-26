@@ -35,7 +35,7 @@ const userSchema = new Schema<IUser>({
             (val: any[]) => val.length <= 5,
             '{PATH} exceeds the limit of 5'
         ]
-    }
+    },
 }, { timestamps: true }); // Automatically adds createdAt and updatedAt fields
 
 /**
@@ -43,10 +43,24 @@ const userSchema = new Schema<IUser>({
  * Automatically hashes the password before saving to the database if it was modified.
  * Async return signals completion to Mongoose.
  */
-userSchema.pre("save", async function () {
-    if (!this.isModified("password") || !this.password) return;
+userSchema.pre("save", async function (next:any) {
+    // 1. Check if password exists and was modified
+    if (!this.isModified("password") || !this.password) {
+        return next();
+    }
 
-    this.password = await bcrypt.hash(this.password, 10);
+    try {
+        // 2. Explicitly await the string result
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(this.password as string, saltRounds);
+        
+        // 3. Assign the resulting string (not the promise)
+        this.password = hashedPassword;
+        
+        next();
+    } catch (error: any) {
+        next(error);
+    }
 });
 
 /**
